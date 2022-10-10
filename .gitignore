@@ -1,0 +1,5 @@
+# ignore file with tokens
+my_tokens.py
+
+# ignore path __pycache__
+__pycache__/
