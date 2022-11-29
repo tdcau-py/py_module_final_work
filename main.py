@@ -1,9 +1,10 @@
-import os
 from pprint import pprint
-from my_tokens import VK_TOKEN, YA__DISK_TOKEN
+from datetime import datetime
+from my_tokens import VK_TOKEN, YA_DISK_TOKEN
 from ya_disk_uploader import YaUploader
 import requests
 import json
+import os
 
 
 class VK:
@@ -12,12 +13,13 @@ class VK:
     METHOD_GET_PHOTOS = 'photos.get'
     PHOTO_INFO_PATH = os.getcwd()
     PHOTO_INFO_FILE_NAME = 'photo_info.json'
+    VK_API_VERSION = '5.131'
+    ACCESS_TOKEN = VK_TOKEN
 
-    def __init__(self, access_token, user_id, version='5.131'):
-        self.token = access_token
+    def __init__(self, user_id: str, yandex_disk_token: str = None):
+        self.yandex_token = yandex_disk_token
         self.id = user_id
-        self.version = version
-        self.params = {'access_token': self.token, 'v': self.version}
+        self.params = {'access_token': self.ACCESS_TOKEN, 'v': self.VK_API_VERSION}
 
     def _get_url(self, method: str) -> str:
         """Формирует url-адрес с передачей метода """
@@ -37,10 +39,6 @@ class VK:
         response = requests.get(url, params={**self.params, **params})
         return response.json()
 
-    def get_photos_url(self):
-        """Получает url для загрузки фотографий на яндекс диск"""
-
-
     def save_photo_info(self):
         """Сохраняет информацию о фотографии в json-формате"""
         photos_info = self.get_photos_info()
@@ -48,27 +46,46 @@ class VK:
 
         if photos_info['response']['count']:
             for photo in photos_info['response']['items']:
+                likes_photo = photo["likes"]["count"]
+                name_photo = f'{likes_photo}.jpg'
+                url_photo = ''
+                width = 0
+                height = 0
+
+                for size in photo['sizes']:
+                    if (size['height'] * size['width']) > (width * height):
+                        width = size['width']
+                        height = size['height']
+                        url_photo = size['url']
+
+                size = f'{width}x{height}'
+                date_photo = datetime.fromtimestamp(photo['date']).date().isoformat()
+
                 if photos_data:
                     for data in photos_data:
-                        photo_info = {'file_name': photo['likes']['count']}
+                        if name_photo == data['file_name']:
+                            name_photo = f'{likes_photo}_{date_photo}.jpg'
+                            break
 
-                        width = 0
-                        height = 0
-                        for size in photo['sizes']:
-                            if (size['height'] * size['width']) > (width * height):
-                                width = size['width']
-                                height = size['height']
+                photo_info = {'file_name': name_photo, 'size': size}
+                photos_data.append(photo_info)
+                status_operation = self.upload_photos(name_photo, url_photo)
 
-                        photo_info['size'] = f'{width}x{height}'
-                        photos_data.append(photo_info)
+        with open('dump.json', 'w') as json_file:
+            json.dump(photos_data, json_file)
+
+        return status_operation
+
+    def upload_photos(self, photo_name: str, download_url: str):
+        """Загружает фотографии на яндекс диск"""
+        uploader = YaUploader(self.yandex_token)
+        result = uploader.upload(ya_disk_path=photo_name, url_file_path=download_url)
+        return result
 
 
 if __name__ == '__main__':
-    access_token = VK_TOKEN
-    ya_disk_token = YA__DISK_TOKEN
     user_id = '749333920'
-
-    vk = VK(access_token, user_id)
-    uploader = YaUploader(ya_disk_token)
-
-    pprint(vk.get_photos_info())
+    ya_disk_token = YA_DISK_TOKEN
+    vk = VK(user_id, ya_disk_token)
+    result = vk.save_photo_info()
+    print(result)
